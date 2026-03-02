@@ -157,8 +157,6 @@ app.post('/api/device/:deviceId/command', authenticateToken, (req, res) => {
     } else if (command === 'camera_stop') {
         console.log(`📸 [CAMERA] STOP -> ${deviceName} (${deviceId})`);
         cameraSessions.delete(deviceId);
-    } else if (command === 'camera_frame') {
-        console.log(`📸 [CAMERA] FRAME REQ -> ${deviceName} (${deviceId})`);
     } else {
         console.log(`📤 [COMMAND] ${command.toUpperCase()} -> ${deviceName} (${deviceId})`);
     }
