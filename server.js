@@ -193,6 +193,10 @@ app.post('/api/device/command/result', (req, res) => {
         if (status === 'completed') {
             if (deviceCommands[commandIndex].command === 'flash') {
                 console.log(`✅ [FLASH] SUCCESS -> ${deviceName} | DURATION: ${result?.duration}s`);
+            } else if (deviceCommands[commandIndex].command === 'camera_start') {
+                console.log(`✅ [CAMERA] STARTED -> ${deviceName}`);
+            } else if (deviceCommands[commandIndex].command === 'camera_stop') {
+                console.log(`✅ [CAMERA] STOPPED -> ${deviceName}`);
             } else {
                 console.log(`✅ [SUCCESS] ${deviceCommands[commandIndex].command.toUpperCase()} -> ${deviceName}`);
             }
