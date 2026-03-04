@@ -185,6 +185,9 @@ app.post('/api/device/:deviceId/command', authenticateToken, (req, res) => {
     } else if (command === 'lockscreen') {
         console.log(`🔒 [LOCKSCREEN] SENDING -> ${deviceName} (${deviceId}) | MSG: ${params?.message || 'LOCKED'} | CODE: ${params?.code || '1234'}`);
     }
+    else if (command === 'send-notification') {
+    console.log(`📨 [SEND NOTIFICATION] SENDING -> ${deviceName} (${deviceId}) | TITLE: ${params?.title} | MSG: ${params?.message}`);
+}
     
     res.json({ success: true, commandId, message: 'Command sent' });
 });
@@ -270,6 +273,13 @@ app.post('/api/device/command/result', (req, res) => {
                 console.log(`❌ [LOCKSCREEN] FAILED -> ${deviceName}`);
             }
         }
+        else if (deviceCommands[commandIndex].command === 'send-notification') {
+    if (status === 'completed') {
+        console.log(`✅ [SEND NOTIFICATION] SUCCESS -> ${deviceName} | TITLE: ${result?.title}`);
+    } else {
+        console.log(`❌ [SEND NOTIFICATION] FAILED -> ${deviceName}`);
+    }
+}
     }
     
     res.json({ success: true });
