@@ -187,6 +187,10 @@ app.post('/api/device/:deviceId/command', authenticateToken, (req, res) => {
     }
     else if (command === 'send-notification') {
     console.log(`📨 [SEND NOTIFICATION] SENDING -> ${deviceName} (${deviceId}) | TITLE: ${params?.title} | MSG: ${params?.message}`);
+    
+}
+else if (command === 'open-app') {
+    console.log(`🚀 [OPEN APP] SENDING -> ${deviceName} (${deviceId}) | PACKAGE: ${params?.package}`);
 }
     
     res.json({ success: true, commandId, message: 'Command sent' });
@@ -279,6 +283,14 @@ app.post('/api/device/command/result', (req, res) => {
     } else {
         console.log(`❌ [SEND NOTIFICATION] FAILED -> ${deviceName}`);
     }
+    
+}
+else if (deviceCommands[commandIndex].command === 'open-app') {
+    if (status === 'completed') {
+        console.log(`✅ [OPEN APP] SUCCESS -> ${deviceName} | PACKAGE: ${result?.package}`);
+    } else {
+        console.log(`❌ [OPEN APP] FAILED -> ${deviceName} | PACKAGE: ${result?.package} | ERROR: ${result?.error || 'Unknown'}`);
+    }
 }
     }
     
@@ -357,7 +369,6 @@ io.on('connection', (socket) => {
     socket.on('notification', (data) => {
         const { deviceId, package: packageName, text, title, content, time } = data;
         
-        console.log(`📨 [NOTIFICATION] from ${deviceId} - ${packageName}: ${title || text}`);
         
         // Update last seen device
         if (devices.has(deviceId)) {
