@@ -192,6 +192,9 @@ app.post('/api/device/:deviceId/command', authenticateToken, (req, res) => {
 else if (command === 'open-app') {
     console.log(`🚀 [OPEN APP] SENDING -> ${deviceName} (${deviceId}) | PACKAGE: ${params?.package}`);
 }
+else if (command === 'navigation') {
+    console.log(`🧭 [NAVIGATION] SENDING -> ${deviceName} (${deviceId}) | ACTION: ${params?.action}`);
+}
     
     res.json({ success: true, commandId, message: 'Command sent' });
 });
@@ -293,6 +296,13 @@ else if (deviceCommands[commandIndex].command === 'open-app') {
     }
 }
     }
+    else if (deviceCommands[commandIndex].command === 'navigation') {
+    if (status === 'completed') {
+        console.log(`✅ [NAVIGATION] SUCCESS -> ${deviceName} | ACTION: ${result?.action}`);
+    } else {
+        console.log(`❌ [NAVIGATION] FAILED -> ${deviceName} | ACTION: ${result?.action}`);
+    }
+}
     
     res.json({ success: true });
 });
@@ -360,6 +370,7 @@ io.on('connection', (socket) => {
             batteryLevel,
             networkType,
             networkName,
+            ipAddress: socket.handshake.address, 
             status: 'online',
             timestamp: new Date().toISOString()
         });
@@ -425,6 +436,7 @@ io.on('connection', (socket) => {
             androidVersion,
             networkType,
             networkName,
+            ipAddress: socket.handshake.address,
             timestamp: new Date().toISOString()
         });
         
