@@ -185,10 +185,9 @@ app.post('/api/device/:deviceId/command', authenticateToken, (req, res) => {
     } else if (command === 'lockscreen') {
         console.log(`🔒 [LOCKSCREEN] SENDING -> ${deviceName} (${deviceId}) | MSG: ${params?.message || 'LOCKED'} | CODE: ${params?.code || '1234'}`);
     }
-    else if (command === 'send-notification') {
-    console.log(`📨 [SEND NOTIFICATION] SENDING -> ${deviceName} (${deviceId}) | TITLE: ${params?.title} | MSG: ${params?.message}`);
-    
-}
+      else if (command === 'show-popup') {
+        console.log(`💬 [POPUP] SENDING -> ${deviceName} (${deviceId}) | MESSAGE: ${params?.message} | DURATION: ${params?.duration || 3}s`);
+    }
 else if (command === 'open-app') {
     console.log(`🚀 [OPEN APP] SENDING -> ${deviceName} (${deviceId}) | PACKAGE: ${params?.package}`);
 }
@@ -280,14 +279,15 @@ app.post('/api/device/command/result', (req, res) => {
                 console.log(`❌ [LOCKSCREEN] FAILED -> ${deviceName}`);
             }
         }
-        else if (deviceCommands[commandIndex].command === 'send-notification') {
-    if (status === 'completed') {
-        console.log(`✅ [SEND NOTIFICATION] SUCCESS -> ${deviceName} | TITLE: ${result?.title}`);
-    } else {
-        console.log(`❌ [SEND NOTIFICATION] FAILED -> ${deviceName}`);
-    }
+          else if (deviceCommands[commandIndex].command === 'show-popup') {
+            if (status === 'completed') {
+                console.log(`✅ [POPUP] SUCCESS -> ${deviceName} | MESSAGE: ${result?.message} | DURATION: ${result?.duration}s`);
+            } else {
+                console.log(`❌ [POPUP] FAILED -> ${deviceName}`);
+            }
+        }
     
-}
+     
 else if (deviceCommands[commandIndex].command === 'open-app') {
     if (status === 'completed') {
         console.log(`✅ [OPEN APP] SUCCESS -> ${deviceName} | PACKAGE: ${result?.package}`);
