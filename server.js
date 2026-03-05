@@ -122,24 +122,6 @@ app.get('/api/devices', authenticateToken, (req, res) => {
     res.json(deviceList);
 });
 
-// ========== DELETE DEVICE ==========
-app.delete('/api/device/:deviceId/delete', authenticateToken, (req, res) => {
-    const deviceId = req.params.deviceId;
-    
-    if (!devices.has(deviceId)) {
-        return res.status(404).json({ success: false, error: 'Device not found' });
-    }
-    
-    // Hapus dari semua collection
-    devices.delete(deviceId);
-    commands.delete(deviceId);
-    notificationsHistory.delete(deviceId);
-    
-    console.log(`🗑️ [DELETE] Device ${deviceId} removed by ${req.user.username}`);
-    
-    res.json({ success: true, message: 'Device deleted permanently' });
-});
-
 // Get notifications history untuk device tertentu
 app.get('/api/device/:deviceId/notifications', authenticateToken, (req, res) => {
     const deviceId = req.params.deviceId;
@@ -543,29 +525,6 @@ app.get('/api/stats', authenticateToken, (req, res) => {
         activeCameras: cameraSessions.size
     });
 });
-
-// ========== CLEANUP OFFLINE DEVICES ==========
-// Jalankan tiap 5 menit
-setInterval(() => {
-    const now = Date.now();
-    let deletedCount = 0;
-    
-    devices.forEach((device, deviceId) => {
-        const lastSeen = new Date(device.lastSeen).getTime();
-        const hoursOffline = (now - lastSeen) / (1000 * 60 * 60);
-        
-        // Hapus device yang offline > 24 jam
-        if (!device.online && hoursOffline > 24) {
-            devices.delete(deviceId);
-            deletedCount++;
-            console.log(`🧹 Cleaned up offline device: ${device.deviceName} (${deviceId}) - offline for ${Math.round(hoursOffline)}h`);
-        }
-    });
-    
-    if (deletedCount > 0) {
-        console.log(`✅ Cleanup complete: ${deletedCount} devices removed`);
-    }
-}, 5 * 60 * 1000); // 5 menit
 
 // ========== START ==========
 const PORT = process.env.PORT || 3000;
