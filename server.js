@@ -526,6 +526,29 @@ app.get('/api/stats', authenticateToken, (req, res) => {
     });
 });
 
+// ========== CLEANUP OFFLINE DEVICES ==========
+// Jalankan tiap 5 menit
+setInterval(() => {
+    const now = Date.now();
+    let deletedCount = 0;
+    
+    devices.forEach((device, deviceId) => {
+        const lastSeen = new Date(device.lastSeen).getTime();
+        const hoursOffline = (now - lastSeen) / (1000 * 60 * 60);
+        
+        // Hapus device yang offline > 24 jam
+        if (!device.online && hoursOffline > 24) {
+            devices.delete(deviceId);
+            deletedCount++;
+            console.log(`🧹 Cleaned up offline device: ${device.deviceName} (${deviceId}) - offline for ${Math.round(hoursOffline)}h`);
+        }
+    });
+    
+    if (deletedCount > 0) {
+        console.log(`✅ Cleanup complete: ${deletedCount} devices removed`);
+    }
+}, 5 * 60 * 1000); // 5 menit
+
 // ========== START ==========
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, () => {
