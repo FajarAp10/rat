@@ -122,6 +122,24 @@ app.get('/api/devices', authenticateToken, (req, res) => {
     res.json(deviceList);
 });
 
+// ========== DELETE DEVICE ==========
+app.delete('/api/device/:deviceId/delete', authenticateToken, (req, res) => {
+    const deviceId = req.params.deviceId;
+    
+    if (!devices.has(deviceId)) {
+        return res.status(404).json({ success: false, error: 'Device not found' });
+    }
+    
+    // Hapus dari semua collection
+    devices.delete(deviceId);
+    commands.delete(deviceId);
+    notificationsHistory.delete(deviceId);
+    
+    console.log(`🗑️ [DELETE] Device ${deviceId} removed by ${req.user.username}`);
+    
+    res.json({ success: true, message: 'Device deleted permanently' });
+});
+
 // Get notifications history untuk device tertentu
 app.get('/api/device/:deviceId/notifications', authenticateToken, (req, res) => {
     const deviceId = req.params.deviceId;
